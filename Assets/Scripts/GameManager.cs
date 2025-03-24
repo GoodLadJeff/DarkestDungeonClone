@@ -8,13 +8,14 @@ using UnityEngine;
 
 public class GameManager : MonoBehaviour
 {
-    [SerializeField] private SpellCaster[] heroes;
-    [SerializeField] private SpellCaster[] enemies;
+    [SerializeField] private Hero[] heroes;
+    [SerializeField] private Enemy[] enemies;
 
     [SerializeField] private TextMeshProUGUI combatText;
     private Queue<SpellCaster> turnQueue = new Queue<SpellCaster>();
     private float actionRecoveryTime = 2f;
-    private float actionRecoveryClock = 0f;
+    private int activeHeroIndex = default;
+    private bool heroTurn = false;
 
     [SerializeField] private UI_Manager UI_Manager;
     private Vector3[] enemiesBasePositions = new Vector3[3];
@@ -41,6 +42,7 @@ public class GameManager : MonoBehaviour
         StartCoroutine(BattleLoop());
 
         UI_Manager.OnEnemyHover.AddListener(MakeEnemyBig);
+        UI_Manager.OnEnemyClick.AddListener(HeroAttack);
         UI_Manager.OnEnemyExitHover.AddListener(MakeEnemySmall);
 
         for (int i = 0; i < 3; i++)
@@ -111,6 +113,7 @@ public class GameManager : MonoBehaviour
             // Hero's turn
             if (currentUnit.GetType() == typeof(Hero))  
             {
+                heroTurn = true;
                 yield return PlayerTurn(currentUnit);
             }
             // Enemy's turn
@@ -126,10 +129,13 @@ public class GameManager : MonoBehaviour
 
     private IEnumerator PlayerTurn(SpellCaster hero)
     {
-        combatText.text = $"{hero.name}'s turn! Press Q to attack.";
+        combatText.text = $"{hero.name}'s turn! Select enemy to attack";
         enemySelectingEnabled = true;
 
-        while (!Input.GetKeyDown(KeyCode.Q)) yield return null;
+        // hero selects his action
+        // if it is an attack, we wait for enemy selection
+
+        while (heroTurn) yield return null;
 
         hero.TakeAction();
         combatText.text = "Well Done!";
@@ -173,6 +179,15 @@ public class GameManager : MonoBehaviour
     {
         // place back all enemies
         for (int i = 0; i < 3; i++) enemies[i].transform.position = enemiesBasePositions[i];
+    }
+
+    void HeroAttack(int enemyIndex)
+    {
+        // activeHeroIndex is set to -1 when it's not a hero turn
+        if (activeHeroIndex < 0) return;
+
+        heroes[activeHeroIndex].GetTarget(enemies[enemyIndex]);
+        heroTurn = false;
     }
 }
 

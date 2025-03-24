@@ -27,4 +27,9 @@ public class Hero : SpellCaster
         // change to sprite to attack sprite
         Attack();
     }
+
+    public void GetTarget(Enemy enemy)
+    {
+        enemy.GetHurt(25);
+    }
 }

@@ -38,18 +38,14 @@ public class GameManager : MonoBehaviour
     {
         FillHeroesAndEnemiesArrays();
 
-        InitializeTurnQueue();
-        StartCoroutine(BattleLoop());
-
         UI_Manager.OnEnemyHover.AddListener(MakeEnemyBig);
         UI_Manager.OnEnemyClick.AddListener(HeroAttack);
         UI_Manager.OnEnemyExitHover.AddListener(MakeEnemySmall);
+        UI_Manager.OnHeroSpell0Click.AddListener(HeroSpell0Select);
+        UI_Manager.HideHeroActionButtons();
 
-        for (int i = 0; i < 3; i++)
-        {
-            enemiesBasePositions[i] = enemies[i].transform.position;
-        }
-        
+        InitializeTurnQueue();
+        StartCoroutine(BattleLoop());
     }
 
     #region battle
@@ -88,6 +84,12 @@ public class GameManager : MonoBehaviour
             // all heroes have the same enemies
             enemies[i].enemies = heroes;
         }
+
+        // filling enemies base pos
+        for (int i = 0; i < 3; i++)
+        {
+            enemiesBasePositions[i] = enemies[i].transform.position;
+        }
     }
 
     private void InitializeTurnQueue()
@@ -114,6 +116,7 @@ public class GameManager : MonoBehaviour
             if (currentUnit.GetType() == typeof(Hero))  
             {
                 heroTurn = true;
+                UI_Manager.HideHeroActionButtons(false);
                 yield return PlayerTurn(currentUnit);
             }
             // Enemy's turn
@@ -130,10 +133,6 @@ public class GameManager : MonoBehaviour
     private IEnumerator PlayerTurn(SpellCaster hero)
     {
         combatText.text = $"{hero.name}'s turn! Select enemy to attack";
-        enemySelectingEnabled = true;
-
-        // hero selects his action
-        // if it is an attack, we wait for enemy selection
 
         while (heroTurn) yield return null;
 
@@ -184,10 +183,16 @@ public class GameManager : MonoBehaviour
     void HeroAttack(int enemyIndex)
     {
         // activeHeroIndex is set to -1 when it's not a hero turn
-        if (activeHeroIndex < 0) return;
+        if (activeHeroIndex < 0 || !enemySelectingEnabled) return;
 
         heroes[activeHeroIndex].GetTarget(enemies[enemyIndex]);
         heroTurn = false;
+    }
+
+    void HeroSpell0Select()
+    {
+        enemySelectingEnabled = true;
+        UI_Manager.HideHeroActionButtons(true);
     }
 }
 

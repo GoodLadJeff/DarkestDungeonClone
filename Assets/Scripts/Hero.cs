@@ -7,7 +7,7 @@ public class Hero : SpellCaster
         base.TakeAction();
 
         //select the spell to fire
-        CastSpell_0();
+        //CastSpell_0();
     }
 
     public override void CastSpell_0()

@@ -5,23 +5,29 @@ using System.Collections.Generic;
 using System.Linq;
 using TMPro;
 using UnityEngine;
+using static UnityEngine.GraphicsBuffer;
 
 public class GameManager : MonoBehaviour
 {
     [SerializeField] private Hero[] heroes;
     [SerializeField] private Enemy[] enemies;
-
-    [SerializeField] private TextMeshProUGUI combatText;
-    private Queue<SpellCaster> turnQueue = new Queue<SpellCaster>();
-    private float actionRecoveryTime = 2f;
-    private int activeHeroIndex = default;
-    private bool heroTurn = false;
-
     [SerializeField] private UI_Manager UI_Manager;
-    private Vector3[] enemiesBasePositions = new Vector3[3];
-    private float enemyPositionOffsetHovered = 10;
+    [SerializeField] private TextMeshProUGUI combatText;
+    [SerializeField] private Vector3 highLightHeroPos = Vector3.zero;
+    [SerializeField] private Vector3 highLightEnemyPos = Vector3.zero;
+
+    private SpellCaster currentUnit = default;
+    private Hero currentHero = default;
+    private Queue<SpellCaster> turnQueue = new Queue<SpellCaster>();
+
+    private float actionImpactTime = 2f;
+    private float actionRecoveryTime = .5f;
+
+    private int activeHeroIndex = default;
+
+    private bool heroTurn = false;
     private bool _enemySelectingEnabled = false;
-    private bool enemySelectingEnabled
+    private bool EnemySelectingEnabled
     {
         get { return _enemySelectingEnabled; }
         set
@@ -44,11 +50,14 @@ public class GameManager : MonoBehaviour
         UI_Manager.OnHeroSpell0Click.AddListener(HeroSpell0Select);
         UI_Manager.HideHeroActionButtons();
 
+        combatText.text = "";
+
         InitializeTurnQueue();
         StartCoroutine(BattleLoop());
     }
 
-    #region battle
+#region battle
+
     private void FillHeroesAndEnemiesArrays()
     {
         // filling heroes arrays
@@ -84,12 +93,6 @@ public class GameManager : MonoBehaviour
             // all heroes have the same enemies
             enemies[i].enemies = heroes;
         }
-
-        // filling enemies base pos
-        for (int i = 0; i < 3; i++)
-        {
-            enemiesBasePositions[i] = enemies[i].transform.position;
-        }
     }
 
     private void InitializeTurnQueue()
@@ -101,8 +104,6 @@ public class GameManager : MonoBehaviour
 
         list = list.OrderBy(i => Guid.NewGuid()).ToList();
 
-        Debug.Log(list);
-
         foreach (var spellcaster in list) turnQueue.Enqueue(spellcaster);
     }
 
@@ -110,11 +111,14 @@ public class GameManager : MonoBehaviour
     {
         while (true)
         {
-            SpellCaster currentUnit = turnQueue.Dequeue();
+            currentUnit = turnQueue.Dequeue();
+
+            currentUnit.SelectedForAction();
 
             // Hero's turn
             if (currentUnit.GetType() == typeof(Hero))  
             {
+                currentHero = (Hero)currentUnit;
                 heroTurn = true;
                 UI_Manager.HideHeroActionButtons(false);
                 yield return PlayerTurn(currentUnit);
@@ -125,34 +129,37 @@ public class GameManager : MonoBehaviour
                 yield return EnemyTurn(currentUnit);
             }
 
+            // I need them to come forward here
+            StartCoroutine(HighlightSequence());
+
+            yield return new WaitForSeconds(actionImpactTime);
+
             SetEveryoneIdle();
-            turnQueue.Enqueue(currentUnit);
+
+            if (turnQueue.Count <= 0) 
+                InitializeTurnQueue();
+
+            yield return new WaitForSeconds(actionRecoveryTime);
+            currentHero = null;
         }
     }
 
     private IEnumerator PlayerTurn(SpellCaster hero)
     {
-        combatText.text = $"{hero.name}'s turn! Select enemy to attack";
-
         while (heroTurn) yield return null;
 
         hero.TakeAction();
-        combatText.text = "Well Done!";
-        enemySelectingEnabled = false;
-
-        yield return new WaitForSeconds(actionRecoveryTime);
+        EnemySelectingEnabled = false;
     }
 
     private IEnumerator EnemyTurn(SpellCaster enemy)
     {
-        combatText.text = $"{enemy.name} is attacking!";
+        combatText.text = "Sword attack";
 
         yield return new WaitForSeconds(1f);
 
         enemy.TakeAction();
-        combatText.text = "Ouch!";
-
-        yield return new WaitForSeconds(actionRecoveryTime);
+        combatText.text = "";
     }
 
     private void SetEveryoneIdle()
@@ -160,39 +167,86 @@ public class GameManager : MonoBehaviour
         foreach (var hero in heroes) hero.Idle();
         foreach (var enemy in enemies) enemy.Idle();
     }
-    #endregion
+
+#endregion
 
     void MakeEnemyBig(int enemyIndex)
     {
         // only run if selecting is enabled
-        if (!enemySelectingEnabled) return;
+        if (!EnemySelectingEnabled) return;
 
-        // enemy to main camera vector, normalized
-        Vector3 enemyToCam = (Camera.main.transform.position - enemiesBasePositions[enemyIndex]).normalized;
-
-        // enemies are placed at vector enemy to cam * offset
-        enemies[enemyIndex].transform.position = enemiesBasePositions[enemyIndex] + enemyToCam * enemyPositionOffsetHovered;
+        // enemies local scale mult
+        enemies[enemyIndex].transform.localScale = Vector3.one * 1.05f;
     }
 
     void MakeEnemySmall(int enemyIndex)
     {
-        // place back all enemies
-        for (int i = 0; i < 3; i++) enemies[i].transform.position = enemiesBasePositions[i];
+        // scale back all enemies
+        for (int i = 0; i < 3; i++) enemies[i].transform.localScale = Vector3.one;
     }
 
     void HeroAttack(int enemyIndex)
     {
         // activeHeroIndex is set to -1 when it's not a hero turn
-        if (activeHeroIndex < 0 || !enemySelectingEnabled) return;
+        if (!currentHero || !EnemySelectingEnabled) return;
 
-        heroes[activeHeroIndex].GetTarget(enemies[enemyIndex]);
+        currentHero.GetTarget(enemies[enemyIndex]);
+        currentHero.target = enemies[enemyIndex];
         heroTurn = false;
     }
 
     void HeroSpell0Select()
     {
-        enemySelectingEnabled = true;
+        EnemySelectingEnabled = true;
         UI_Manager.HideHeroActionButtons(true);
+    }
+
+    private IEnumerator HighlightSequence()
+    {
+        Vector3 basePos = currentUnit.transform.position;
+        Vector3 baseTargetPos = currentUnit.target.transform.position;
+
+        Vector3 hightlightPos;
+        Vector3 hightlightTargetPos;
+
+        float travelDuration = actionImpactTime / 10;
+        float spotlightDuration = actionImpactTime - (travelDuration*1.5f);
+
+        if(currentUnit.GetType() == typeof(Hero))
+        {
+            hightlightPos = highLightHeroPos;
+            hightlightTargetPos = highLightEnemyPos;
+        }
+        else
+        {
+            hightlightPos = highLightEnemyPos;
+            hightlightTargetPos = highLightHeroPos; 
+        }
+
+        StartCoroutine(MoveToPosition(currentUnit.target.transform, hightlightTargetPos, travelDuration));
+        yield return MoveToPosition(currentUnit.transform, hightlightPos, travelDuration);
+
+        yield return new WaitForSeconds(spotlightDuration); // Pause while in the spotlight
+
+        StartCoroutine(MoveToPosition(currentUnit.target.transform, baseTargetPos, travelDuration));
+        yield return MoveToPosition(currentUnit.transform, basePos, travelDuration);
+    }
+
+    private IEnumerator MoveToPosition(Transform unit, Vector3 destination, float duration)
+    {
+        Vector3 startPosition = unit.position;
+        float elapsedTime = 0f;
+
+        while (elapsedTime < duration)
+        {
+            float t = elapsedTime / duration;
+            t = Mathf.SmoothStep(0f, 1f, t); // Smooth transition
+            unit.position = Vector3.Lerp(startPosition, destination, t);
+            elapsedTime += Time.deltaTime;
+            yield return null;
+        }
+
+        unit.position = destination; // Ensure final position is set precisely
     }
 }
 

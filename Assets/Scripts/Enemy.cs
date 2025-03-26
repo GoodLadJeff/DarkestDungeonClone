@@ -29,6 +29,8 @@ public class Enemy : SpellCaster
         SpellCaster enemy = enemies[Random.Range(minimum, maximum)];
         enemy.GetHurt(25);
 
+        target = enemy;
+
         // change to sprite to attack sprite
         Attack();
     }

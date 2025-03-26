@@ -8,6 +8,8 @@ public class Hero : SpellCaster
 
         //select the spell to fire
         //CastSpell_0();
+
+        Attack();
     }
 
     public override void CastSpell_0()
